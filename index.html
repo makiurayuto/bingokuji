@@ -16,7 +16,9 @@
 </head>
 <body>
   <main id="main-screen" class="screen">
-    <header class="bar end">
+    <header class="tools">
+      <button id="undo" class="btn" type="button" disabled>1つ前に戻す</button>
+      <button id="open-history" class="btn" type="button">履歴</button>
       <button id="open-settings" class="btn" type="button">設定</button>
     </header>
     <div class="main-body">
@@ -36,9 +38,18 @@
       </button>
       <p id="remaining" class="remaining"></p>
       <p id="message" class="message" role="status"></p>
-      <button id="undo" class="btn" type="button" hidden>1つ前に戻す</button>
     </div>
   </main>
+
+  <section id="history-screen" class="screen" hidden>
+    <header class="bar">
+      <button id="close-history" class="btn" type="button">戻る</button>
+      <h1>履歴</h1>
+      <span></span>
+    </header>
+    <p id="history-empty" class="message" hidden>履歴はありません</p>
+    <ol id="history-list" class="history-list"></ol>
+  </section>
 
   <section id="settings-screen" class="screen" hidden>
     <header class="bar">

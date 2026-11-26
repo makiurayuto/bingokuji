@@ -26,7 +26,33 @@ button, input, select { font: inherit; color: inherit; }
 }
 .bar > :first-child { justify-self: start; }
 .bar > :last-child { justify-self: end; }
-.bar.end { display: flex; justify-content: flex-end; }
+.tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding-top: 8px;
+}
+.tools .btn {
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: clamp(13px, 4vw, 16px);
+  line-height: 1.2;
+}
+
+.history-list { list-style: none; margin: 0; padding: 0; }
+.history-list li {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 12px 0;
+  border-bottom: 1px solid #ddd;
+  overflow-wrap: anywhere;
+}
+.history-list .h-time { color: #555; font-size: 14px; }
+.history-list .h-type { font-size: 14px; font-weight: 700; }
+.history-list .h-prize { font-size: 16px; }
+.history-list .undo-row { color: #777; }
 .bar h1 { margin: 0; font-size: 18px; }
 
 .btn {

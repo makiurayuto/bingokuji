@@ -2,7 +2,7 @@
 import { pickPrize } from './lottery.js';
 
 const DB_NAME = 'omikuji';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // v2: 履歴ストアを追加（既存データはそのまま）
 
 export const RANKS = ['特大当たり', '大当たり', '当たり'];
 export const MAX_COUNT = 99; // 個数の選択肢は 0〜MAX_COUNT
@@ -41,10 +41,17 @@ function openDB() {
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta', { keyPath: 'key' });
         }
+        if (!db.objectStoreNames.contains('history')) {
+          db.createObjectStore('history', { keyPath: 'id', autoIncrement: true });
+        }
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        // 新しいバージョンのアプリが別タブで開かれたら接続を閉じて更新を妨げない
+        db.onversionchange = () => { db.close(); dbPromise = null; };
+        resolve(db);
+      };
       req.onerror = () => reject(req.error);
-      req.onblocked = () => reject(new Error('blocked'));
     });
     dbPromise.catch(() => { dbPromise = null; });
   }
@@ -129,7 +136,7 @@ export async function getState() {
  * 失敗時は reject（何も変更されない）。
  */
 export function draw() {
-  return runTx(['prizes', 'meta'], ({ prizes, meta }, { step, set, cancel }) => {
+  return runTx(['prizes', 'meta', 'history'], ({ prizes, meta, history }, { step, set, cancel }) => {
     const prevReq = meta.get('lastResult'); // 同一トランザクション内では発行順に完了する
     const req = prizes.getAll();
     req.onsuccess = step(() => {
@@ -144,6 +151,7 @@ export function draw() {
       const result = { name: won.name, rank: won.rank, drawnAt: Date.now() };
       meta.put({ key: 'lastResult', value: result });
       meta.put({ key: 'undo', prizeId: won.id, previous: prevReq.result ? prevReq.result.value : null });
+      history.add({ type: 'draw', name: won.name, rank: won.rank, at: result.drawnAt });
       set({ result });
     });
   });
@@ -155,7 +163,7 @@ export function draw() {
  * 取り消せるのは最後の抽選1回のみ。取り消せない場合は { none: true }。
  */
 export function undoLastDraw() {
-  return runTx(['prizes', 'meta'], ({ prizes, meta }, { step, set, cancel }) => {
+  return runTx(['prizes', 'meta', 'history'], ({ prizes, meta, history }, { step, set, cancel }) => {
     const uReq = meta.get('undo');
     uReq.onsuccess = step(() => {
       const undo = uReq.result;
@@ -168,6 +176,7 @@ export function undoLastDraw() {
         if (undo.previous) meta.put({ key: 'lastResult', value: undo.previous });
         else meta.delete('lastResult');
         meta.delete('undo');
+        history.add({ type: 'undo', name: pReq.result.name, rank: pReq.result.rank, at: Date.now() });
         set({ ok: true });
       });
     });
@@ -203,6 +212,18 @@ export function deletePrize(id) {
   return runTx(['prizes', 'meta'], ({ prizes, meta }) => {
     prizes.delete(id);
     meta.delete('undo');
+  });
+}
+
+/** 抽選・取り消しの履歴（新しい順） */
+export async function getHistory() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('history', 'readonly');
+    const req = tx.objectStore('history').getAll();
+    tx.oncomplete = () => resolve(req.result.sort((a, b) => b.id - a.id));
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('aborted'));
   });
 }
 

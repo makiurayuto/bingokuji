@@ -292,16 +292,16 @@ t('1つ前に戻す：直前の抽選を取り消して引き直せる', async (
   const dir = tmp();
   let ctx = await launch(dir);
   let page = await open(ctx);
-  assert.equal(await page.isVisible('#undo'), false, '抽選前に戻すボタンが出ている');
+  assert.equal(await page.isEnabled('#undo'), false, '抽選前に戻すボタンが押せる');
   await drawOnce(page);
   const first = await readDB(page);
   await drawOnce(page);
   const second = await readDB(page);
   assert.equal(second.total, 18);
-  assert.equal(await page.isVisible('#undo'), true);
+  assert.equal(await page.isEnabled('#undo'), true);
   // 取り消し
   await page.click('#undo');
-  await page.waitForFunction(() => document.getElementById('undo').hidden);
+  await page.waitForFunction(() => document.getElementById('undo').disabled);
   const s = await readDB(page);
   assert.equal(s.total, 19);
   assert.deepEqual(s.prizes, first.prizes, '在庫が1回目の抽選後の状態に戻っていない');
@@ -309,11 +309,11 @@ t('1つ前に戻す：直前の抽選を取り消して引き直せる', async (
   assert.equal(await page.textContent('#result-name'), first.lastResult.name);
   assert.equal(await shownTotal(page), 19);
   // 取り消しは1回分のみ（再起動後も復活しない）
-  assert.equal(await page.isVisible('#undo'), false);
+  assert.equal(await page.isEnabled('#undo'), false);
   await ctx.close();
   ctx = await launch(dir);
   page = await open(ctx);
-  assert.equal(await page.isVisible('#undo'), false);
+  assert.equal(await page.isEnabled('#undo'), false);
   assert.equal((await readDB(page)).total, 19);
   // 引き直せる
   await drawOnce(page);
@@ -322,14 +322,14 @@ t('1つ前に戻す：直前の抽選を取り消して引き直せる', async (
   await ctx.close();
   ctx = await launch(dir);
   page = await open(ctx);
-  assert.equal(await page.isVisible('#undo'), true);
+  assert.equal(await page.isEnabled('#undo'), true);
   // 最初の1回を取り消すと結果表示は空に戻る
   await ctx.close();
   ctx = await launch(tmp());
   page = await open(ctx);
   await drawOnce(page);
   await page.click('#undo');
-  await page.waitForFunction(() => document.getElementById('undo').hidden);
+  await page.waitForFunction(() => document.getElementById('undo').disabled);
   const z = await readDB(page);
   assert.equal(z.total, 20);
   assert.equal(z.lastResult, null);
@@ -346,25 +346,26 @@ t('1つ前に戻す：全部引いた後でも戻せる／演出中は押せな�
   await page.waitForFunction(() => !document.getElementById('box').disabled);
   assert.equal((await readDB(page)).total, 1);
   assert.equal(await page.textContent('#message'), '');
-  // 演出中は戻すボタンが出ない
+  // 演出中は戻す・履歴・設定ボタンを押せない
   await page.click('#box');
   await page.waitForSelector('#box.shaking');
-  assert.equal(await page.isVisible('#undo'), false);
+  assert.equal(await page.isEnabled('#undo'), false);
+  assert.equal(await page.isEnabled('#open-history'), false);
   await page.waitForFunction(() => !document.getElementById('box').classList.contains('shaking'));
-  assert.equal(await page.isVisible('#undo'), true);
+  assert.equal(await page.isEnabled('#undo'), true);
   // 設定を変更すると取り消せなくなる
   await page.click('#open-settings');
   await page.locator('#prize-list .prize-row').first().locator('.count').selectOption('3');
   await page.click('#close-settings');
   await page.waitForTimeout(200);
-  assert.equal(await page.isVisible('#undo'), false);
+  assert.equal(await page.isEnabled('#undo'), false);
   assert.equal((await readDB(page)).total, 3);
   // 設定画面を開いただけなら取り消せる
   await drawOnce(page);
   await page.click('#open-settings');
   await page.click('#close-settings');
   await page.waitForTimeout(200);
-  assert.equal(await page.isVisible('#undo'), true);
+  assert.equal(await page.isEnabled('#undo'), true);
   await ctx.close();
 });
 
@@ -378,7 +379,7 @@ t('1つ前に戻す：保存に失敗した場合は何も変わらない／キ�
   await page.click('#undo');
   await page.waitForFunction(() => /保存に失敗/.test(document.getElementById('message').textContent));
   assert.deepEqual(await readDB(page), before);
-  assert.equal(await page.isVisible('#undo'), true);
+  assert.equal(await page.isEnabled('#undo'), true);
   await page.evaluate(() => { window.__failWrites = null; });
   // 確認ダイアログでキャンセル
   page.removeAllListeners('dialog');
@@ -387,6 +388,61 @@ t('1つ前に戻す：保存に失敗した場合は何も変わらない／キ�
   await page.waitForTimeout(200);
   assert.deepEqual(await readDB(page), before);
   page.on('dialog', (d) => d.accept());
+  await ctx.close();
+});
+
+t('履歴：引いたもの・戻したものが新しい順に表示され、再起動後も残る', async () => {
+  const dir = tmp();
+  let ctx = await launch(dir);
+  let page = await open(ctx);
+  await page.click('#open-history');
+  await page.waitForSelector('#history-screen:not([hidden])');
+  assert.equal(await page.isVisible('#history-empty'), true);
+  await page.click('#close-history');
+  const names = [];
+  for (let i = 0; i < 3; i++) { await drawOnce(page); names.push((await readDB(page)).lastResult); }
+  await page.click('#undo');
+  await page.waitForFunction(() => document.getElementById('undo').disabled);
+  await drawOnce(page);
+  names.push((await readDB(page)).lastResult);
+  // 保存に失敗した抽選は履歴に残らない
+  await page.evaluate(() => { window.__failWrites = 'throw'; });
+  await drawOnce(page);
+  await page.evaluate(() => { window.__failWrites = null; });
+  await ctx.close();
+  ctx = await launch(dir);
+  page = await open(ctx);
+  await page.click('#open-history');
+  await page.waitForSelector('#history-screen:not([hidden])');
+  assert.equal(await page.isVisible('#history-screen'), true);
+  assert.equal(await page.isVisible('#main-screen'), false);
+  assert.equal(await page.isVisible('#history-empty'), false);
+  const rows = await page.locator('#history-list li').evaluateAll((ls) => ls.map((l) => [l.querySelector('.h-type').textContent, l.querySelector('.h-prize').textContent]));
+  const p = (r) => `${r.rank} ${r.name}`;
+  assert.deepEqual(rows, [
+    ['引いた', p(names[3])],
+    ['戻した', p(names[2])],
+    ['引いた', p(names[2])],
+    ['引いた', p(names[1])],
+    ['引いた', p(names[0])],
+  ]);
+  assert.match(await page.locator('#history-list .h-time').first().textContent(), /^\d{1,2}\/\d{1,2} \d{2}:\d{2}$/);
+  await page.click('#close-history');
+  assert.equal(await page.isVisible('#main-screen'), true);
+  assert.equal((await readDB(page)).total, 17);
+  await ctx.close();
+});
+
+t('上部のボタンが左から「1つ前に戻す・履歴・設定」の順に1列で並ぶ', async () => {
+  const ctx = await launch(tmp());
+  const page = await open(ctx);
+  const info = await page.evaluate(() => [...document.querySelectorAll('#main-screen .tools button')].map((b) => {
+    const r = b.getBoundingClientRect();
+    return { text: b.textContent, left: r.left, top: r.top };
+  }));
+  assert.deepEqual(info.map((i) => i.text), ['1つ前に戻す', '履歴', '設定']);
+  assert.ok(info[0].left < info[1].left && info[1].left < info[2].left);
+  assert.ok(info.every((i) => i.top === info[0].top), '1列に並んでいない');
   await ctx.close();
 });
 
@@ -494,13 +550,14 @@ t('スマートフォンの画面から要素がはみ出さない', async () =>
     await page.click('#box');
     await page.waitForFunction(() => document.getElementById('result-name').textContent !== '');
     const box = await page.evaluate(() => {
-      const els = ['box', 'remaining', 'result-rank', 'result-name', 'open-settings'].map((id) => document.getElementById(id).getBoundingClientRect());
+      const els = ['box', 'remaining', 'result-rank', 'result-name', 'undo', 'open-history', 'open-settings'].map((id) => document.getElementById(id).getBoundingClientRect());
       return {
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         maxRight: Math.max(...els.map((r) => r.right)),
         minLeft: Math.min(...els.map((r) => r.left)),
         width: innerWidth,
-        btnH: document.getElementById('open-settings').getBoundingClientRect().height,
+        btnH: Math.min(...['undo', 'open-history', 'open-settings'].map((id) => document.getElementById(id).getBoundingClientRect().height)),
+        btnTextFits: ['undo', 'open-history', 'open-settings'].every((id) => { const b = document.getElementById(id); return b.scrollWidth <= b.clientWidth; }),
         maxBottom: Math.max(...els.map((r) => r.bottom)),
         height: innerHeight,
         resultBottom: document.getElementById('result').getBoundingClientRect().bottom,
@@ -509,6 +566,7 @@ t('スマートフォンの画面から要素がはみ出さない', async () =>
     });
     assert.ok(box.overflow <= 0 && box.maxRight <= box.width && box.minLeft >= 0, `${label} メイン画面がはみ出し ${JSON.stringify(box)}`);
     assert.ok(box.btnH >= 44, `${label} ボタンが小さい`);
+    assert.ok(box.btnTextFits, `${label} ボタンの文字がはみ出し`);
     assert.ok(box.maxBottom <= box.height, `${label} 縦にはみ出し ${JSON.stringify(box)}`);
     assert.ok(box.resultBottom <= box.boxTop, `${label} 結果が箱の上にない`);
     await ctx.close();

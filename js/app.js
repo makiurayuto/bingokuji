@@ -14,6 +14,11 @@ const el = {
   message: $('message'),
   openSettings: $('open-settings'),
   undo: $('undo'),
+  openHistory: $('open-history'),
+  history: $('history-screen'),
+  closeHistory: $('close-history'),
+  historyList: $('history-list'),
+  historyEmpty: $('history-empty'),
   closeSettings: $('close-settings'),
   list: $('prize-list'),
   addForm: $('add-form'),
@@ -47,7 +52,8 @@ function renderMain() {
   el.box.classList.toggle('empty', empty);
   el.box.disabled = !ready || drawing || empty;
   el.openSettings.disabled = !ready || drawing;
-  el.undo.hidden = !(ready && state.canUndo && !drawing);
+  el.openHistory.disabled = !ready || drawing;
+  el.undo.disabled = !(ready && state.canUndo && !drawing);
   if (empty && !drawing) setMessage('すべての景品がなくなりました');
 }
 
@@ -66,7 +72,8 @@ async function onDraw() {
   drawing = true; // 1. ロック
   el.box.disabled = true;
   el.openSettings.disabled = true;
-  el.undo.hidden = true;
+  el.openHistory.disabled = true;
+  el.undo.disabled = true;
   setMessage('');
   try {
     // 2〜5. 当選決定・個数減算・同一トランザクションで保存・成功確認
@@ -106,7 +113,8 @@ async function onUndo() {
   drawing = true; // 抽選と同じロックを使う
   el.box.disabled = true;
   el.openSettings.disabled = true;
-  el.undo.hidden = true;
+  el.openHistory.disabled = true;
+  el.undo.disabled = true;
   setMessage('');
   let failed = false;
   try {
@@ -118,6 +126,50 @@ async function onUndo() {
   drawing = false;
   try { await refresh(); } catch (_) { renderMain(); }
   if (failed) setMessage('保存に失敗しました。取り消しは行われていません。', true);
+}
+
+// ---------- 履歴画面 ----------
+
+function formatTime(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function openHistory() {
+  if (drawing || !ready) return;
+  let items = [];
+  try {
+    items = await db.getHistory();
+  } catch (e) {
+    console.error(e);
+    setMessage('履歴を読み込めませんでした', true);
+    return;
+  }
+  el.historyList.replaceChildren(...items.map((h) => {
+    const li = document.createElement('li');
+    if (h.type === 'undo') li.className = 'undo-row';
+    const time = document.createElement('span');
+    time.className = 'h-time';
+    time.textContent = formatTime(h.at);
+    const type = document.createElement('span');
+    type.className = 'h-type';
+    type.textContent = h.type === 'undo' ? '戻した' : '引いた';
+    const prize = document.createElement('span');
+    prize.className = 'h-prize';
+    prize.textContent = `${h.rank} ${h.name}`;
+    li.append(time, type, prize);
+    return li;
+  }));
+  el.historyEmpty.hidden = items.length > 0;
+  el.main.hidden = true;
+  el.history.hidden = false;
+  window.scrollTo(0, 0);
+}
+
+function closeHistory() {
+  el.history.hidden = true;
+  el.main.hidden = false;
 }
 
 // ---------- 設定画面 ----------
@@ -257,6 +309,8 @@ async function closeSettings() {
 
 el.box.addEventListener('click', onDraw);
 el.undo.addEventListener('click', onUndo);
+el.openHistory.addEventListener('click', openHistory);
+el.closeHistory.addEventListener('click', closeHistory);
 el.openSettings.addEventListener('click', openSettings);
 el.closeSettings.addEventListener('click', closeSettings);
 rankOptions(el.addForm.elements.rank, '当たり');
