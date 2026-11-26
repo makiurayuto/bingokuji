@@ -217,18 +217,22 @@ t('抽選途中でも景品の追加・変更・削除ができ、変更後も�
   await row('飲み物').locator('.name').fill('お茶');
   await row('飲み物').locator('.name').press('Tab');
   // ランク変更
-  await row('お米券').locator('select').selectOption('大当たり');
+  await row('お米券').locator('select:not(.count)').selectOption('大当たり');
   // 個数変更（その時点の残り個数として）
-  await row('カップ麺系').locator('.count').fill('5');
-  await row('カップ麺系').locator('.count').press('Tab');
-  // 不正な個数は拒否され元に戻る
-  for (const bad of ['-1', '1.5', 'abc', '', '10000', '１']) {
+  await row('カップ麺系').locator('.count').selectOption('5');
+  // 個数は選択式で、選択肢は 0〜99 の整数のみ
+  const optionValues = await row('映画関連').locator('.count option').evaluateAll((os) => os.map((o) => o.value));
+  assert.deepEqual(optionValues, Array.from({ length: 100 }, (_, i) => String(i)));
+  assert.equal(await page.locator('#prize-list input.count, #add-form input[name=remaining]').count(), 0, '個数の入力欄が残っている');
+  // 万一不正な値が送られても拒否され元に戻る（選択肢を不正に書き換えて確認）
+  for (const bad of ['-1', '1.5', 'abc', '100']) {
     const c = row('映画関連').locator('.count');
     const prev = await c.inputValue();
-    await c.fill(bad);
-    await c.press('Tab');
+    await c.evaluate((sel, v) => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.append(o); }, bad);
+    await c.selectOption(bad);
+    await page.waitForTimeout(100);
     assert.equal(await c.inputValue(), prev, `不正値 "${bad}" が受け付けられた`);
-    assert.match(await page.textContent('#settings-error'), /整数/);
+    assert.match(await page.textContent('#settings-error'), /選んでください/);
   }
   // 空の景品名は拒否
   await row('映画関連').locator('.name').fill('  ');
@@ -239,12 +243,13 @@ t('抽選途中でも景品の追加・変更・削除ができ、変更後も�
   // 追加
   await page.fill('#add-form [name=name]', 'テスト景品');
   await page.selectOption('#add-form [name=rank]', '特大当たり');
-  await page.fill('#add-form [name=remaining]', '2');
+  await page.selectOption('#add-form [name=remaining]', '2');
   await page.click('#add-form button[type=submit]');
   await page.waitForFunction(() => document.querySelectorAll('#prize-list .prize-row').length === 17);
   // 不正値での追加は拒否
   await page.fill('#add-form [name=name]', 'NG');
-  await page.fill('#add-form [name=remaining]', '-3');
+  await page.locator('#add-form [name=remaining]').evaluate((sel) => { const o = document.createElement('option'); o.value = '-3'; sel.append(o); });
+  await page.selectOption('#add-form [name=remaining]', '-3');
   await page.click('#add-form button[type=submit]');
   await page.waitForTimeout(200);
   await page.click('#close-settings');
@@ -275,8 +280,7 @@ t('抽選途中でも景品の追加・変更・削除ができ、変更後も�
 
   // 在庫0でも個数を増やせば再び抽選できる
   await page.click('#open-settings');
-  await page.locator(`[data-id="${get('お茶').id}"] .count`).fill('1');
-  await page.locator(`[data-id="${get('お茶').id}"] .count`).press('Tab');
+  await page.locator(`[data-id="${get('お茶').id}"] .count`).selectOption('1');
   await page.click('#close-settings');
   await page.waitForFunction(() => !document.getElementById('box').disabled);
   await drawOnce(page);
@@ -371,7 +375,7 @@ t('スマートフォンの画面から要素がはみ出さない', async () =>
     // 長い景品名でもはみ出さないか
     await page.click('#open-settings');
     await page.fill('#add-form [name=name]', 'とても長い景品名のテストとても長い景品名のテストとても長い景品名のテスト');
-    await page.fill('#add-form [name=remaining]', '9999');
+    await page.selectOption('#add-form [name=remaining]', '99');
     await page.click('#add-form button[type=submit]');
     await page.waitForFunction(() => document.querySelectorAll('#prize-list .prize-row').length === 18);
     const overflowS = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -395,10 +399,16 @@ t('スマートフォンの画面から要素がはみ出さない', async () =>
         minLeft: Math.min(...els.map((r) => r.left)),
         width: innerWidth,
         btnH: document.getElementById('open-settings').getBoundingClientRect().height,
+        maxBottom: Math.max(...els.map((r) => r.bottom)),
+        height: innerHeight,
+        resultBottom: document.getElementById('result').getBoundingClientRect().bottom,
+        boxTop: document.getElementById('box').getBoundingClientRect().top,
       };
     });
     assert.ok(box.overflow <= 0 && box.maxRight <= box.width && box.minLeft >= 0, `${label} メイン画面がはみ出し ${JSON.stringify(box)}`);
     assert.ok(box.btnH >= 44, `${label} ボタンが小さい`);
+    assert.ok(box.maxBottom <= box.height, `${label} 縦にはみ出し ${JSON.stringify(box)}`);
+    assert.ok(box.resultBottom <= box.boxTop, `${label} 結果が箱の上にない`);
     await ctx.close();
   }
   await browser.close();

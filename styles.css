@@ -49,7 +49,7 @@ button, input, select { font: inherit; color: inherit; }
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding-bottom: 64px;
+  padding-bottom: 32px;
   text-align: center;
 }
 .box {
@@ -72,7 +72,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .remaining { margin: 0; font-size: 18px; }
-.result { min-height: 7.5em; width: 100%; overflow-wrap: anywhere; }
+.result { min-height: 7.5em; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; overflow-wrap: anywhere; }
 .result p { margin: 0; }
 .result-rank { font-size: clamp(28px, 9vw, 44px); font-weight: 700; }
 .result-name { font-size: clamp(32px, 11vw, 56px); font-weight: 700; line-height: 1.25; }
@@ -100,5 +100,5 @@ button, input, select { font: inherit; color: inherit; }
 }
 .prize-row .name { width: 100%; }
 .prize-row select { flex: 1; }
-.prize-row .count { width: 5.5em; flex: none; text-align: right; }
+.prize-row .count { width: 5.5em; flex: none; }
 .prize-row .btn { flex: none; }

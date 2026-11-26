@@ -20,6 +20,10 @@
       <button id="open-settings" class="btn" type="button">設定</button>
     </header>
     <div class="main-body">
+      <div id="result" class="result" aria-live="polite">
+        <p id="result-rank" class="result-rank"></p>
+        <p id="result-name" class="result-name"></p>
+      </div>
       <button id="box" class="box" type="button" aria-label="おみくじを引く">
         <svg viewBox="0 0 120 120" aria-hidden="true">
           <g stroke="#000" stroke-width="3" stroke-linejoin="round">
@@ -31,10 +35,6 @@
         </svg>
       </button>
       <p id="remaining" class="remaining"></p>
-      <div id="result" class="result" aria-live="polite">
-        <p id="result-rank" class="result-rank"></p>
-        <p id="result-name" class="result-name"></p>
-      </div>
       <p id="message" class="message" role="status"></p>
     </div>
   </main>
@@ -51,7 +51,7 @@
       <input name="name" class="name" type="text" placeholder="景品名" maxlength="50" aria-label="追加する景品名">
       <div class="row-controls">
         <select name="rank" aria-label="追加する景品のランク"></select>
-        <input name="remaining" class="count" type="text" inputmode="numeric" pattern="[0-9]*" value="1" aria-label="追加する景品の個数">
+        <select name="remaining" class="count" aria-label="追加する景品の個数"></select>
         <button class="btn primary" type="submit">追加</button>
       </div>
     </form>

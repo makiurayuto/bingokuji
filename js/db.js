@@ -5,7 +5,7 @@ const DB_NAME = 'omikuji';
 const DB_VERSION = 1;
 
 export const RANKS = ['特大当たり', '大当たり', '当たり'];
-export const MAX_COUNT = 9999;
+export const MAX_COUNT = 99; // 個数の選択肢は 0〜MAX_COUNT
 
 const SEED = [
   ['特大当たり', 'アマギフ5万', 1],

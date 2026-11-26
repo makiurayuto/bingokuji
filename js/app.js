@@ -106,6 +106,18 @@ function rankOptions(select, selected) {
   }));
 }
 
+function countOptions(select, selected) {
+  const opts = [];
+  for (let n = 0; n <= db.MAX_COUNT; n++) {
+    const o = document.createElement('option');
+    o.value = String(n);
+    o.textContent = String(n);
+    o.selected = n === selected;
+    opts.push(o);
+  }
+  select.replaceChildren(...opts);
+}
+
 function renderSettings() {
   el.list.replaceChildren(...state.prizes.map((p) => {
     const li = document.createElement('li');
@@ -132,18 +144,15 @@ function renderSettings() {
     rankOptions(rank, p.rank);
     rank.addEventListener('change', () => save(p.id, { rank: rank.value }));
 
-    const count = document.createElement('input');
-    count.type = 'text';
-    count.inputMode = 'numeric';
-    count.pattern = '[0-9]*';
+    const count = document.createElement('select');
     count.className = 'count';
-    count.value = String(p.remaining);
+    countOptions(count, p.remaining);
     count.setAttribute('aria-label', '残り個数');
     count.addEventListener('change', () => {
       const n = parseCount(count.value);
       if (n === null) {
         count.value = String(p.remaining);
-        showSettingsError(`個数は0〜${db.MAX_COUNT}の整数で入力してください`);
+        showSettingsError(`個数は0〜${db.MAX_COUNT}から選んでください`);
         return;
       }
       save(p.id, { remaining: n });
@@ -190,11 +199,11 @@ el.addForm.addEventListener('submit', async (ev) => {
   const name = f.name.value.trim();
   const remaining = parseCount(f.remaining.value);
   if (!name) { showSettingsError('景品名を入力してください'); return; }
-  if (remaining === null) { showSettingsError(`個数は0〜${db.MAX_COUNT}の整数で入力してください`); return; }
+  if (remaining === null) { showSettingsError(`個数は0〜${db.MAX_COUNT}から選んでください`); return; }
   await apply(() => db.addPrize({ name, rank: f.rank.value, remaining }));
   if (!el.settingsError.textContent) {
     f.name.value = '';
-    f.remaining.value = '1';
+    countOptions(f.remaining, 1);
   }
 });
 
@@ -224,6 +233,7 @@ el.box.addEventListener('click', onDraw);
 el.openSettings.addEventListener('click', openSettings);
 el.closeSettings.addEventListener('click', closeSettings);
 rankOptions(el.addForm.elements.rank, '当たり');
+countOptions(el.addForm.elements.remaining, 1);
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && ready && !drawing && !el.main.hidden) {
