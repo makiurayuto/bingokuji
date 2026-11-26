@@ -108,9 +108,14 @@ export async function getState() {
     const tx = db.transaction(['prizes', 'meta'], 'readonly');
     const pReq = tx.objectStore('prizes').getAll();
     const rReq = tx.objectStore('meta').get('lastResult');
+    const uReq = tx.objectStore('meta').get('undo');
     tx.oncomplete = () => {
       const prizes = pReq.result.sort((a, b) => a.order - b.order || a.id - b.id);
-      resolve({ prizes, lastResult: rReq.result ? rReq.result.value : null });
+      resolve({
+        prizes,
+        lastResult: rReq.result ? rReq.result.value : null,
+        canUndo: !!uReq.result,
+      });
     };
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error || new Error('aborted'));
@@ -118,12 +123,14 @@ export async function getState() {
 }
 
 /**
- * 抽選：残り景品から当選を決定し、残り個数を1減らし、当選結果と共に
- * 同一トランザクションで保存する。保存完了後に結果を返す。
- * 景品がない場合は { empty: true }。失敗時は reject（何も変更されない）。
+ * 抽選：残り景品から当選を決定し、残り個数を1減らし、当選結果と
+ * 取り消し用の情報（当選景品のIDと1つ前の結果）を同一トランザクションで保存する。
+ * 保存完了後に結果を返す。景品がない場合は { empty: true }。
+ * 失敗時は reject（何も変更されない）。
  */
 export function draw() {
   return runTx(['prizes', 'meta'], ({ prizes, meta }, { step, set, cancel }) => {
+    const prevReq = meta.get('lastResult'); // 同一トランザクション内では発行順に完了する
     const req = prizes.getAll();
     req.onsuccess = step(() => {
       const list = req.result.sort((a, b) => a.order - b.order || a.id - b.id);
@@ -136,35 +143,66 @@ export function draw() {
       prizes.put(won);
       const result = { name: won.name, rank: won.rank, drawnAt: Date.now() };
       meta.put({ key: 'lastResult', value: result });
+      meta.put({ key: 'undo', prizeId: won.id, previous: prevReq.result ? prevReq.result.value : null });
       set({ result });
     });
   });
 }
 
+/**
+ * 直前の抽選を1回分だけ取り消す：当選景品の残り個数を1戻し、
+ * 表示する結果を1つ前のものに戻す（同一トランザクション）。
+ * 取り消せるのは最後の抽選1回のみ。取り消せない場合は { none: true }。
+ */
+export function undoLastDraw() {
+  return runTx(['prizes', 'meta'], ({ prizes, meta }, { step, set, cancel }) => {
+    const uReq = meta.get('undo');
+    uReq.onsuccess = step(() => {
+      const undo = uReq.result;
+      if (!undo) { cancel({ none: true }); return; }
+      const pReq = prizes.get(undo.prizeId);
+      pReq.onsuccess = step(() => {
+        if (!pReq.result) { meta.delete('undo'); set({ none: true }); return; }
+        pReq.result.remaining += 1;
+        prizes.put(pReq.result);
+        if (undo.previous) meta.put({ key: 'lastResult', value: undo.previous });
+        else meta.delete('lastResult');
+        meta.delete('undo');
+        set({ ok: true });
+      });
+    });
+  });
+}
+
+// 設定変更をすると、直前の抽選は取り消せなくなる（在庫の意図しない復活を防ぐ）
+
 export function addPrize({ name, rank, remaining }) {
-  return runTx(['prizes'], ({ prizes }, { step }) => {
+  return runTx(['prizes', 'meta'], ({ prizes, meta }, { step }) => {
     const req = prizes.getAll();
     req.onsuccess = step(() => {
       const order = req.result.reduce((m, p) => Math.max(m, p.order), -1) + 1;
       prizes.add({ name, rank, remaining, order });
+      meta.delete('undo');
     });
   });
 }
 
 /** 指定項目のみ変更（残り個数はその時点の残り個数として上書き） */
 export function updatePrize(id, fields) {
-  return runTx(['prizes'], ({ prizes }, { step }) => {
+  return runTx(['prizes', 'meta'], ({ prizes, meta }, { step }) => {
     const req = prizes.get(id);
     req.onsuccess = step(() => {
       if (!req.result) return;
       prizes.put({ ...req.result, ...fields });
+      meta.delete('undo');
     });
   });
 }
 
 export function deletePrize(id) {
-  return runTx(['prizes'], ({ prizes }) => {
+  return runTx(['prizes', 'meta'], ({ prizes, meta }) => {
     prizes.delete(id);
+    meta.delete('undo');
   });
 }
 

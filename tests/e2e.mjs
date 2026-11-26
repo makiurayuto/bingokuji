@@ -288,6 +288,108 @@ t('抽選途中でも景品の追加・変更・削除ができ、変更後も�
   await ctx.close();
 });
 
+t('1つ前に戻す：直前の抽選を取り消して引き直せる', async () => {
+  const dir = tmp();
+  let ctx = await launch(dir);
+  let page = await open(ctx);
+  assert.equal(await page.isVisible('#undo'), false, '抽選前に戻すボタンが出ている');
+  await drawOnce(page);
+  const first = await readDB(page);
+  await drawOnce(page);
+  const second = await readDB(page);
+  assert.equal(second.total, 18);
+  assert.equal(await page.isVisible('#undo'), true);
+  // 取り消し
+  await page.click('#undo');
+  await page.waitForFunction(() => document.getElementById('undo').hidden);
+  const s = await readDB(page);
+  assert.equal(s.total, 19);
+  assert.deepEqual(s.prizes, first.prizes, '在庫が1回目の抽選後の状態に戻っていない');
+  assert.deepEqual(s.lastResult, first.lastResult);
+  assert.equal(await page.textContent('#result-name'), first.lastResult.name);
+  assert.equal(await shownTotal(page), 19);
+  // 取り消しは1回分のみ（再起動後も復活しない）
+  assert.equal(await page.isVisible('#undo'), false);
+  await ctx.close();
+  ctx = await launch(dir);
+  page = await open(ctx);
+  assert.equal(await page.isVisible('#undo'), false);
+  assert.equal((await readDB(page)).total, 19);
+  // 引き直せる
+  await drawOnce(page);
+  assert.equal((await readDB(page)).total, 18);
+  // 抽選直後に再起動しても取り消せる
+  await ctx.close();
+  ctx = await launch(dir);
+  page = await open(ctx);
+  assert.equal(await page.isVisible('#undo'), true);
+  // 最初の1回を取り消すと結果表示は空に戻る
+  await ctx.close();
+  ctx = await launch(tmp());
+  page = await open(ctx);
+  await drawOnce(page);
+  await page.click('#undo');
+  await page.waitForFunction(() => document.getElementById('undo').hidden);
+  const z = await readDB(page);
+  assert.equal(z.total, 20);
+  assert.equal(z.lastResult, null);
+  assert.equal(await page.textContent('#result-name'), '');
+  await ctx.close();
+});
+
+t('1つ前に戻す：全部引いた後でも戻せる／演出中は押せない／設定変更後は戻せない', async () => {
+  const ctx = await launch(tmp());
+  const page = await open(ctx);
+  for (let i = 0; i < 20; i++) await drawOnce(page);
+  assert.equal(await page.isDisabled('#box'), true);
+  await page.click('#undo');
+  await page.waitForFunction(() => !document.getElementById('box').disabled);
+  assert.equal((await readDB(page)).total, 1);
+  assert.equal(await page.textContent('#message'), '');
+  // 演出中は戻すボタンが出ない
+  await page.click('#box');
+  await page.waitForSelector('#box.shaking');
+  assert.equal(await page.isVisible('#undo'), false);
+  await page.waitForFunction(() => !document.getElementById('box').classList.contains('shaking'));
+  assert.equal(await page.isVisible('#undo'), true);
+  // 設定を変更すると取り消せなくなる
+  await page.click('#open-settings');
+  await page.locator('#prize-list .prize-row').first().locator('.count').selectOption('3');
+  await page.click('#close-settings');
+  await page.waitForTimeout(200);
+  assert.equal(await page.isVisible('#undo'), false);
+  assert.equal((await readDB(page)).total, 3);
+  // 設定画面を開いただけなら取り消せる
+  await drawOnce(page);
+  await page.click('#open-settings');
+  await page.click('#close-settings');
+  await page.waitForTimeout(200);
+  assert.equal(await page.isVisible('#undo'), true);
+  await ctx.close();
+});
+
+t('1つ前に戻す：保存に失敗した場合は何も変わらない／キャンセルできる', async () => {
+  const ctx = await launch(tmp());
+  const page = await open(ctx);
+  await drawOnce(page);
+  await drawOnce(page);
+  const before = await readDB(page);
+  await page.evaluate(() => { window.__failWrites = 'throw'; });
+  await page.click('#undo');
+  await page.waitForFunction(() => /保存に失敗/.test(document.getElementById('message').textContent));
+  assert.deepEqual(await readDB(page), before);
+  assert.equal(await page.isVisible('#undo'), true);
+  await page.evaluate(() => { window.__failWrites = null; });
+  // 確認ダイアログでキャンセル
+  page.removeAllListeners('dialog');
+  page.once('dialog', (d) => d.dismiss());
+  await page.click('#undo');
+  await page.waitForTimeout(200);
+  assert.deepEqual(await readDB(page), before);
+  page.on('dialog', (d) => d.accept());
+  await ctx.close();
+});
+
 t('全景品を削除すると抽選できない', async () => {
   const ctx = await launch(tmp());
   const page = await open(ctx);

@@ -33,7 +33,7 @@ Service Worker は `https://` か `http://localhost` でしか動作しません
 
 ## アプリの更新
 
-ファイルを変更したら `sw.js` の `CACHE` のバージョン（`omikuji-v2` など）を上げてください。
+ファイルを変更したら `sw.js` の `CACHE` のバージョン（`omikuji-v3` など）を上げてください。
 景品データは IndexedDB に保存されているため、更新しても初期状態には戻りません。
 
 ## テスト

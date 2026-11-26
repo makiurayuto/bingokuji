@@ -13,13 +13,14 @@ const el = {
   name: $('result-name'),
   message: $('message'),
   openSettings: $('open-settings'),
+  undo: $('undo'),
   closeSettings: $('close-settings'),
   list: $('prize-list'),
   addForm: $('add-form'),
   settingsError: $('settings-error'),
 };
 
-let state = { prizes: [], lastResult: null };
+let state = { prizes: [], lastResult: null, canUndo: false };
 let ready = false;
 let drawing = false; // 抽選ロック
 
@@ -46,6 +47,7 @@ function renderMain() {
   el.box.classList.toggle('empty', empty);
   el.box.disabled = !ready || drawing || empty;
   el.openSettings.disabled = !ready || drawing;
+  el.undo.hidden = !(ready && state.canUndo && !drawing);
   if (empty && !drawing) setMessage('すべての景品がなくなりました');
 }
 
@@ -64,6 +66,7 @@ async function onDraw() {
   drawing = true; // 1. ロック
   el.box.disabled = true;
   el.openSettings.disabled = true;
+  el.undo.hidden = true;
   setMessage('');
   try {
     // 2〜5. 当選決定・個数減算・同一トランザクションで保存・成功確認
@@ -92,6 +95,29 @@ async function onDraw() {
     drawing = false; // 8. ロック解除
     renderMain();
   }
+}
+
+// 直前の抽選を取り消して引き直せるようにする
+async function onUndo() {
+  if (drawing || !ready || !state.canUndo) return;
+  const r = state.lastResult;
+  if (!confirm(r ? `「${r.name}」の抽選を取り消して、1つ前に戻しますか？` : '1つ前に戻しますか？')) return;
+  if (drawing) return;
+  drawing = true; // 抽選と同じロックを使う
+  el.box.disabled = true;
+  el.openSettings.disabled = true;
+  el.undo.hidden = true;
+  setMessage('');
+  let failed = false;
+  try {
+    await db.undoLastDraw();
+  } catch (e) {
+    console.error(e);
+    failed = true;
+  }
+  drawing = false;
+  try { await refresh(); } catch (_) { renderMain(); }
+  if (failed) setMessage('保存に失敗しました。取り消しは行われていません。', true);
 }
 
 // ---------- 設定画面 ----------
@@ -230,6 +256,7 @@ async function closeSettings() {
 // ---------- 起動 ----------
 
 el.box.addEventListener('click', onDraw);
+el.undo.addEventListener('click', onUndo);
 el.openSettings.addEventListener('click', openSettings);
 el.closeSettings.addEventListener('click', closeSettings);
 rankOptions(el.addForm.elements.rank, '当たり');
