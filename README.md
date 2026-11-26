@@ -1,0 +1,55 @@
+# おみくじ
+
+登録した景品を箱くじ方式（残り個数に比例した確率）で抽選する PWA です。
+データはすべて端末内（IndexedDB）に保存され、初回読み込み後はオフラインで動作します。
+
+## 起動方法（PC での確認）
+
+```sh
+npm start            # = node tests/server.mjs → http://localhost:8080/
+# または
+python3 -m http.server 8080
+```
+
+Service Worker は `https://` か `http://localhost` でしか動作しません。
+
+## 公開方法（GitHub Pages）
+
+1. GitHub のリポジトリで **Settings → Pages** を開く
+2. Source を「Deploy from a branch」にし、公開するブランチと `/ (root)` を選んで Save
+3. 数分後に `https://<ユーザー名>.github.io/<リポジトリ名>/` で開けます
+
+すべてのパスは相対パスなので、サブパスで公開しても動作します。
+
+## スマートフォンへのインストール
+
+1. 上記の URL をスマホのブラウザで一度開く（このときファイルがキャッシュされます）
+2. ホーム画面に追加する
+   - **iPhone（Safari）**：共有ボタン → 「ホーム画面に追加」
+   - **Android（Chrome）**：メニュー（⋮）→ 「アプリをインストール」または「ホーム画面に追加」
+3. 以後はホーム画面のアイコンから起動します（機内モードでも使えます）
+
+注意：iPhone では、Safari のタブで使ったデータとホーム画面アプリのデータは別々に保存されます。ホーム画面から起動して使ってください。
+
+## アプリの更新
+
+ファイルを変更したら `sw.js` の `CACHE` のバージョン（`omikuji-v1` など）を上げてください。
+景品データは IndexedDB に保存されているため、更新しても初期状態には戻りません。
+
+## テスト
+
+```sh
+npm test   # 単体テスト（node:test）+ ブラウザ結合テスト（Playwright / Chromium）
+```
+
+## ファイル構成
+
+| ファイル | 役割 |
+|---|---|
+| `index.html` / `styles.css` | メイン画面・設定画面 |
+| `js/lottery.js` | 抽選ロジック（純粋関数） |
+| `js/db.js` | IndexedDB（初期化・抽選トランザクション・設定変更） |
+| `js/app.js` | 画面制御・抽選ロック・演出 |
+| `sw.js` | Service Worker（オフラインキャッシュ） |
+| `manifest.webmanifest` / `icons/` | ホーム画面追加用 |
+| `tests/` | テストと開発用サーバー（アプリ本体では使用しない） |
