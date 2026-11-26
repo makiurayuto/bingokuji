@@ -215,7 +215,24 @@ export function deletePrize(id) {
   });
 }
 
-/** 抽選・取り消しの履歴（新しい順） */
+/**
+ * 景品を初期値（初回起動時の17種類・20個）に戻す。
+ * 直前の結果と「1つ前に戻す」の情報も消す。履歴は残し、リセットした記録を追加する。
+ */
+export function resetToInitial() {
+  return runTx(['prizes', 'meta', 'history'], ({ prizes, meta, history }) => {
+    prizes.clear();
+    SEED.forEach(([rank, name, remaining], order) => {
+      prizes.add({ name, rank, remaining, order });
+    });
+    meta.delete('lastResult');
+    meta.delete('undo');
+    meta.put({ key: 'initialized', value: true });
+    history.add({ type: 'reset', at: Date.now() });
+  });
+}
+
+/** 抽選・取り消し・リセットの履歴（新しい順） */
 export async function getHistory() {
   const db = await openDB();
   return new Promise((resolve, reject) => {

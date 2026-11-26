@@ -17,13 +17,15 @@ const SEED_TOTAL = 20;
 
 // IndexedDB の書き込み失敗を注入する（window.__failWrites = 'throw' | 'abort'）
 const INJECT = `(() => {
-  const orig = IDBObjectStore.prototype.put;
-  IDBObjectStore.prototype.put = function (...a) {
-    if (window.__failWrites === 'throw') throw new DOMException('injected', 'UnknownError');
-    const r = orig.apply(this, a);
-    if (window.__failWrites === 'abort') this.transaction.abort();
-    return r;
-  };
+  for (const m of ['put', 'add', 'clear']) {
+    const orig = IDBObjectStore.prototype[m];
+    IDBObjectStore.prototype[m] = function (...a) {
+      if (window.__failWrites === 'throw') throw new DOMException('injected', 'UnknownError');
+      const r = orig.apply(this, a);
+      if (window.__failWrites === 'abort') this.transaction.abort();
+      return r;
+    };
+  }
 })();`;
 
 async function launch(dir, opts = {}) {
@@ -443,6 +445,67 @@ t('上部のボタンが左から「1つ前に戻す・履歴・設定」の順�
   assert.deepEqual(info.map((i) => i.text), ['1つ前に戻す', '履歴', '設定']);
   assert.ok(info[0].left < info[1].left && info[1].left < info[2].left);
   assert.ok(info.every((i) => i.top === info[0].top), '1列に並んでいない');
+  await ctx.close();
+});
+
+t('設定：初期値にリセットすると初回起動時と同じ景品・個数に戻る（履歴は残る）', async () => {
+  const dir = tmp();
+  let ctx = await launch(dir);
+  let page = await open(ctx);
+  const fresh = (await readDB(page)).prizes.map(({ name, rank, remaining }) => ({ name, rank, remaining }));
+  for (let i = 0; i < 5; i++) await drawOnce(page);
+  await page.click('#open-settings');
+  await page.locator('#prize-list .prize-row').first().locator('.name').fill('変更した名前');
+  await page.locator('#prize-list .prize-row').first().locator('.name').press('Tab');
+  await page.locator('#prize-list .prize-row').nth(1).locator('button').click();
+  await page.fill('#add-form [name=name]', '追加した景品');
+  await page.click('#add-form button[type=submit]');
+  await page.waitForFunction(() => document.querySelectorAll('#prize-list .prize-row').length === 17);
+  const changed = await readDB(page);
+
+  // キャンセルすると何も変わらない
+  page.removeAllListeners('dialog');
+  page.once('dialog', (d) => d.dismiss());
+  await page.click('#reset');
+  await page.waitForTimeout(200);
+  assert.deepEqual(await readDB(page), changed);
+  // 保存に失敗したら何も変わらない
+  page.on('dialog', (d) => d.accept());
+  await page.evaluate(() => { window.__failWrites = 'throw'; });
+  await page.click('#reset');
+  await page.waitForFunction(() => /保存に失敗/.test(document.getElementById('settings-error').textContent));
+  await page.evaluate(() => { window.__failWrites = null; });
+  assert.deepEqual(await readDB(page), changed);
+  // リセット
+  await page.click('#reset');
+  await page.waitForFunction(() => /初期値に戻しました/.test(document.getElementById('settings-error').textContent));
+  const s = await readDB(page);
+  assert.deepEqual(s.prizes.map(({ name, rank, remaining }) => ({ name, rank, remaining })), fresh);
+  assert.equal(s.total, 20);
+  assert.equal(s.lastResult, null);
+  assert.equal(await page.locator('#prize-list .prize-row').count(), 17);
+  assert.equal(await page.locator('#prize-list .prize-row').first().locator('.name').inputValue(), 'アマギフ5万');
+  await page.click('#close-settings');
+  await page.waitForTimeout(200);
+  assert.equal(await shownTotal(page), 20);
+  assert.equal(await page.textContent('#result-name'), '');
+  assert.equal(await page.isEnabled('#undo'), false, 'リセット後に1つ前に戻せてしまう');
+  // 履歴は残り、リセットの記録が先頭に入る
+  await page.click('#open-history');
+  await page.waitForSelector('#history-screen:not([hidden])');
+  const types = await page.locator('#history-list .h-type').allTextContents();
+  assert.deepEqual(types, ['リセット', '引いた', '引いた', '引いた', '引いた', '引いた']);
+  await page.click('#close-history');
+  // 再起動後もリセット後の状態（二重登録されない）
+  await ctx.close();
+  ctx = await launch(dir);
+  page = await open(ctx);
+  const r = await readDB(page);
+  assert.equal(r.prizes.length, 17);
+  assert.equal(r.total, 20);
+  // リセット後も普通に抽選できる
+  await drawOnce(page);
+  assert.equal((await readDB(page)).total, 19);
   await ctx.close();
 });
 

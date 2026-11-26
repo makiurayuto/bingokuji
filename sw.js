@@ -1,6 +1,6 @@
 // オフライン対応：必要なファイルを事前キャッシュし、キャッシュ優先で返す。
 // ファイルを更新したら CACHE のバージョンを上げる（景品データは IndexedDB にあり影響しない）。
-const CACHE = 'omikuji-v4';
+const CACHE = 'omikuji-v5';
 const FILES = [
   './',
   './index.html',

@@ -23,6 +23,7 @@ const el = {
   list: $('prize-list'),
   addForm: $('add-form'),
   settingsError: $('settings-error'),
+  reset: $('reset'),
 };
 
 let state = { prizes: [], lastResult: null, canUndo: false };
@@ -148,16 +149,16 @@ async function openHistory() {
   }
   el.historyList.replaceChildren(...items.map((h) => {
     const li = document.createElement('li');
-    if (h.type === 'undo') li.className = 'undo-row';
+    if (h.type !== 'draw') li.className = 'undo-row';
     const time = document.createElement('span');
     time.className = 'h-time';
     time.textContent = formatTime(h.at);
     const type = document.createElement('span');
     type.className = 'h-type';
-    type.textContent = h.type === 'undo' ? '戻した' : '引いた';
+    type.textContent = { draw: '引いた', undo: '戻した', reset: 'リセット' }[h.type] || '';
     const prize = document.createElement('span');
     prize.className = 'h-prize';
-    prize.textContent = `${h.rank} ${h.name}`;
+    prize.textContent = h.type === 'reset' ? '景品を初期値に戻した' : `${h.rank} ${h.name}`;
     li.append(time, type, prize);
     return li;
   }));
@@ -251,8 +252,9 @@ function renderSettings() {
   }));
 }
 
-function showSettingsError(text) {
+function showSettingsError(text, isError = true) {
   el.settingsError.textContent = text;
+  el.settingsError.classList.toggle('error', isError);
 }
 
 async function apply(op) {
@@ -283,6 +285,13 @@ el.addForm.addEventListener('submit', async (ev) => {
     f.name.value = '';
     countOptions(f.remaining, 1);
   }
+});
+
+el.reset.addEventListener('click', async () => {
+  if (!confirm('景品と残り個数を初期値（17種類・20個）に戻します。\n直前の抽選結果も消えます（履歴は残ります）。\nよろしいですか？')) return;
+  await apply(() => db.resetToInitial());
+  if (!el.settingsError.textContent) showSettingsError('初期値に戻しました', false);
+  window.scrollTo(0, 0);
 });
 
 function openSettings() {

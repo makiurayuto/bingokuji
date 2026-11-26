@@ -128,3 +128,5 @@ button, input, select { font: inherit; color: inherit; }
 .prize-row select { flex: 1; }
 .prize-row .count { width: 5.5em; flex: none; }
 .prize-row .btn { flex: none; }
+.reset-area { padding: 24px 0 32px; border-top: 1px solid #ddd; }
+.reset-area .btn { width: 100%; }
